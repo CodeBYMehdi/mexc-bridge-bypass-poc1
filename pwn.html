@@ -1,5 +1,5 @@
 <!--
-PoC page for MEXC Android JS-bridge bypass — verification harness.
+PoC page for MEXC Android JS-bridge bypass - verification harness.
 
 The page is launched three ways by ../verify.ps1 (see banner labels below):
 
@@ -29,9 +29,13 @@ is the primary evidence.
   body  { font: 14px/1.4 -apple-system, system-ui, monospace; padding: 12px; margin: 0; }
   .banner { padding: 14px; border-radius: 6px; text-align: center;
             font-weight: 700; font-size: 18px; margin-bottom: 10px; }
-  .ok    { background: #0a4; color: #fff; }
-  .fail  { background: #b22; color: #fff; }
-  .info  { background: #246; color: #fff; }
+  .ok        { background: #0a4; color: #fff; }
+  .fail      { background: #b22; color: #fff; }
+  .info      { background: #246; color: #fff; }
+  .neutral   { background: #555; color: #fff; }
+  .bridge    { padding: 22px 14px; font-size: 24px; border-radius: 8px;
+               text-align: center; font-weight: 800; margin-bottom: 12px;
+               border: 3px solid #fff; }
   .meta  { background: #333; color: #fff; padding: 8px; border-radius: 4px;
            font-size: 12px; margin-bottom: 10px; }
   pre    { background: #111; color: #cfc; padding: 10px; white-space: pre-wrap;
@@ -42,8 +46,8 @@ is the primary evidence.
 </head>
 <body>
 
-<div id="testBanner" class="banner info">[detecting test variant]</div>
-<div id="bridgeBanner" class="banner info">[probing window.mexcAppJsBridge]</div>
+<div id="testBanner" class="banner neutral">[detecting test variant]</div>
+<div id="bridgeBanner" class="bridge neutral">[probing window.mexcAppJsBridge]</div>
 <div class="meta" id="meta">[origin / params not yet shown]</div>
 <pre id="log">[loading]</pre>
 
@@ -66,13 +70,14 @@ function record(label, value) {
 const params = new URLSearchParams(location.search);
 const test = params.get("test") || "?";
 const labels = {
-  "1": "TEST 1 — deeplink accepted (no page_params)",
-  "2": "TEST 2 — bypass-ON probe (ignoreJsDomainCheck=true)",
-  "3": "TEST 3 — bypass-OFF control (ignoreJsDomainCheck=false)",
-  "?": "TEST ? — variant not labelled",
+  "1": "TEST 1 - deeplink accepted (no page_params)",
+  "2": "TEST 2 - bypass-ON probe (ignoreJsDomainCheck=true)",
+  "3": "TEST 3 - bypass-OFF control (ignoreJsDomainCheck=false)",
+  "?": "TEST ? - variant not labelled",
 };
 $tb.textContent = labels[test] || labels["?"];
-$tb.className = "banner " + (test === "2" ? "ok" : (test === "3" ? "fail" : "info"));
+$tb.className = "banner neutral";   // top banner is ALWAYS neutral grey now
+                                    // so only the BRIDGE banner shows red/green
 
 $meta.textContent =
   "host=" + location.host + "   path=" + location.pathname +
@@ -94,13 +99,13 @@ function call(method, payload) {
 (async () => {
   const hasBridge = !!window.mexcAppJsBridge;
   if (!hasBridge) {
-    $bb.textContent = "BRIDGE ABSENT  (window.mexcAppJsBridge undefined)";
-    $bb.className = "banner fail";
+    $bb.textContent = "BRIDGE ABSENT - window.mexcAppJsBridge UNDEFINED";
+    $bb.className = "bridge fail";
     record("BRIDGE", "ABSENT");
     return;
   }
-  $bb.textContent = "BRIDGE PRESENT  (window.mexcAppJsBridge exposed)";
-  $bb.className = "banner ok";
+  $bb.textContent = "BRIDGE PRESENT - window.mexcAppJsBridge EXPOSED";
+  $bb.className = "bridge ok";
   record("BRIDGE", "PRESENT");
 
   // Probe the high-impact native methods. For TEST 3 these should be
